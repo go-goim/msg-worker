@@ -1,12 +1,7 @@
 name: service.goim.msg
 version: v0.0.0
-grpc:
-  scheme: grpc
-  port: 18063
 log:
   level: DEBUG
-metadata:
-  grpcSrv: yes
 redis:
   addr: 127.0.0.1:6379
 mq:

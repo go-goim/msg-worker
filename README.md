@@ -1,3 +1,3 @@
-# msg-server
+# msg-worker
 
-receive msg from user and send msg persistence connection server.
+worker of handle mq msg and send it to push server which user connected.

@@ -6,8 +6,6 @@ import (
 	"github.com/go-goim/core/pkg/cmd"
 	"github.com/go-goim/core/pkg/log"
 
-	messagev1 "github.com/go-goim/api/message/v1"
-
 	"github.com/go-goim/core/pkg/graceful"
 	"github.com/go-goim/core/pkg/mq"
 
@@ -24,9 +22,6 @@ func main() {
 	if err != nil {
 		log.Fatal("InitApplication got err", "error", err)
 	}
-
-	// register grpc
-	messagev1.RegisterOfflineMessageServer(application.GrpcSrv, &service.OfflineMessageService{})
 
 	// register consumer
 	c, err := mq.NewConsumer(&mq.ConsumerConfig{
