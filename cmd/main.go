@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/go-goim/msg-worker/internal/service"
 )
 
-func main() {
+func Main() {
 	if err := cmd.ParseFlags(); err != nil {
 		panic(err)
 	}

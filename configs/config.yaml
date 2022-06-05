@@ -1,4 +1,4 @@
-name: service.goim.msg
+name: worker.goim.msg
 version: v0.0.0
 log:
   level: DEBUG
