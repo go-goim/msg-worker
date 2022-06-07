@@ -1,7 +1,10 @@
-name: worker.goim.msg
+name: goim.worker.msg
 version: v0.0.0
 log:
   level: DEBUG
+http:
+  scheme: http
+  port: 18041
 redis:
   addr: 127.0.0.1:6379
 mq:

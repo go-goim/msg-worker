@@ -3,8 +3,11 @@ package cmd
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/go-goim/core/pkg/cmd"
 	"github.com/go-goim/core/pkg/log"
+	"github.com/go-goim/core/pkg/mid"
 
 	"github.com/go-goim/core/pkg/graceful"
 	"github.com/go-goim/core/pkg/mq"
@@ -33,6 +36,10 @@ func Main() {
 		log.Fatal("NewConsumer got err", "error", err)
 	}
 	application.AddConsumer(c)
+
+	g := gin.New()
+	g.Use(gin.Recovery(), mid.Logger)
+	application.HTTPSrv.HandlePrefix("/", g)
 
 	if err = application.Run(); err != nil {
 		log.Error("application run error", "error", err)

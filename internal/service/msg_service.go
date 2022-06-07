@@ -15,19 +15,17 @@ import (
 	redisv8 "github.com/go-redis/redis/v8"
 	ggrpc "google.golang.org/grpc"
 
+	messagev1 "github.com/go-goim/api/message/v1"
 	"github.com/go-goim/core/pkg/consts"
 	"github.com/go-goim/core/pkg/log"
-
-	messagev1 "github.com/go-goim/api/message/v1"
-
-	"github.com/go-goim/core/pkg/conn/pool"
-	"github.com/go-goim/core/pkg/conn/wrapper"
 
 	"github.com/go-goim/msg-worker/internal/app"
 )
 
 type MqMessageService struct {
 	rdb *redisv8.Client // remove to dao
+	// grpcConnMap is a map of grpc connection. key is agentIP
+	grpcConnMap sync.Map
 }
 
 var (
@@ -82,7 +80,7 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, msg *primitive.M
 		return s.broadcast(ctx, in)
 	}
 
-	str, err := s.rdb.Get(ctx, consts.GetUserOnlineAgentKey(req.GetToUser())).Result()
+	agentIP, err := s.rdb.Get(ctx, consts.GetUserOnlineAgentKey(req.GetToUser())).Result()
 	if err != nil {
 		if err == redisv8.Nil {
 			log.Info("user offline, put to offline queue", "user_id", req.GetToUser())
@@ -91,8 +89,7 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, msg *primitive.M
 		return err
 	}
 
-	in.AgentId = str
-	cc, err := s.loadGrpcConn(ctx, in.AgentId)
+	cc, err := s.loadGrpcConn(ctx, agentIP)
 	if err != nil {
 		return err
 	}
@@ -192,21 +189,21 @@ func (s *MqMessageService) putToRedis(ctx context.Context, ext *primitive.Messag
 }
 
 // todo: is there any better way to do this?
-func (s *MqMessageService) loadGrpcConn(ctx context.Context, agentID string) (cc *ggrpc.ClientConn, err error) {
+func (s *MqMessageService) loadGrpcConn(ctx context.Context, agentIP string) (cc *ggrpc.ClientConn, err error) {
 	var (
 		ep = fmt.Sprintf("discovery://dc1/%s", app.GetApplication().Config.SrvConfig.PushService)
-		ck = fmt.Sprintf("%s:%s", ep, agentID)
+		ck = fmt.Sprintf("%s:%s", ep, agentIP)
 	)
-	c := pool.Get(ck)
-	if c != nil {
-		wc := c.(*wrapper.GrpcWrapper)
-		return wc.ClientConn, nil
+
+	v, ok := s.grpcConnMap.Load(ck)
+	if ok {
+		return v.(*ggrpc.ClientConn), nil
 	}
 
 	cc, err = grpc.DialInsecure(ctx,
 		grpc.WithDiscovery(app.GetApplication().Register),
 		grpc.WithEndpoint(ep),
-		grpc.WithFilter(getFilter(agentID)),
+		grpc.WithFilter(getFilter(agentIP)),
 		grpc.WithTimeout(time.Second*5),
 	)
 
@@ -214,17 +211,18 @@ func (s *MqMessageService) loadGrpcConn(ctx context.Context, agentID string) (cc
 		return
 	}
 
-	pool.Add(wrapper.WrapGrpc(context.Background(), cc, ck))
+	s.grpcConnMap.Store(ck, cc)
 	return
 }
 
-func getFilter(agentID string) selector.Filter {
+func getFilter(agentIP string) selector.Filter {
 	return func(c context.Context, nodes []selector.Node) []selector.Node {
 		var filtered = make([]selector.Node, 0)
 		for i, n := range nodes {
 			log.Info("filter", n.ServiceName(), n.Address(), n.Metadata())
-			if n.Metadata()["agentID"] == agentID {
+			if strings.Contains(n.Address(), agentIP) {
 				filtered = append(filtered, nodes[i])
+				break
 			}
 		}
 
