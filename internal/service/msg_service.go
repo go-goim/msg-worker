@@ -51,10 +51,11 @@ func (s *MqMessageService) Topic() string {
 }
 
 func (s *MqMessageService) Consume(ctx context.Context, msg ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
+	log.Info("Consume msg", "mqMessage", msg[0].String())
 	// msg 实际上只有一条
 	err := s.handleSingleMsg(ctx, msg[0])
 	if err != nil {
-		log.Info("consumer error", "msg", string(msg[0].Body), "error", err)
+		log.Info("consumer error", "mqMessage", string(msg[0].Body), "error", err)
 	}
 
 	return consumer.ConsumeSuccess, nil
@@ -89,6 +90,7 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, msg *primitive.M
 		return err
 	}
 
+	log.Info("user online, send to agent", "uid", req.GetToUser(), "agent_ip", agentIP)
 	cc, err := s.loadGrpcConn(ctx, agentIP)
 	if err != nil {
 		return err
@@ -96,7 +98,7 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, msg *primitive.M
 
 	out, err := messagev1.NewPushMessagerClient(cc).PushMessage(ctx, in)
 	if err != nil {
-		log.Info("MSG send msg err=", err)
+		log.Info("MSG send msg err=", err.Error())
 		return err
 	}
 
@@ -219,7 +221,6 @@ func getFilter(agentIP string) selector.Filter {
 	return func(c context.Context, nodes []selector.Node) []selector.Node {
 		var filtered = make([]selector.Node, 0)
 		for i, n := range nodes {
-			log.Info("filter", n.ServiceName(), n.Address(), n.Metadata())
 			if strings.Contains(n.Address(), agentIP) {
 				filtered = append(filtered, nodes[i])
 				break
