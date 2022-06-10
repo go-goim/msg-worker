@@ -90,6 +90,9 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, msg *primitive.M
 		return err
 	}
 
+	// trim port from agentIP
+	agentIP = strings.Split(agentIP, ":")[0]
+
 	log.Info("user online, send to agent", "uid", req.GetToUser(), "agent_ip", agentIP)
 	cc, err := s.loadGrpcConn(ctx, agentIP)
 	if err != nil {
@@ -221,6 +224,7 @@ func getFilter(agentIP string) selector.Filter {
 	return func(c context.Context, nodes []selector.Node) []selector.Node {
 		var filtered = make([]selector.Node, 0)
 		for i, n := range nodes {
+			log.Debug("filter node", "agent_ip", agentIP, "node_ip", n.Address(), "scheme", n.Scheme())
 			if strings.Contains(n.Address(), agentIP) {
 				filtered = append(filtered, nodes[i])
 				break
