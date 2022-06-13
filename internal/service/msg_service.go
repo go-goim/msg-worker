@@ -16,7 +16,9 @@ import (
 	ggrpc "google.golang.org/grpc"
 
 	messagev1 "github.com/go-goim/api/message/v1"
+	cgrpc "github.com/go-goim/core/pkg/conn/grpc"
 	"github.com/go-goim/core/pkg/consts"
+	"github.com/go-goim/core/pkg/graceful"
 	"github.com/go-goim/core/pkg/log"
 
 	"github.com/go-goim/msg-worker/internal/app"
@@ -193,31 +195,31 @@ func (s *MqMessageService) putToRedis(ctx context.Context, ext *primitive.Messag
 	return nil
 }
 
-// todo: is there any better way to do this?
-func (s *MqMessageService) loadGrpcConn(ctx context.Context, agentIP string) (cc *ggrpc.ClientConn, err error) {
-	var (
-		ep = fmt.Sprintf("discovery://dc1/%s", app.GetApplication().Config.SrvConfig.PushService)
-		ck = fmt.Sprintf("%s:%s", ep, agentIP)
-	)
-
-	v, ok := s.grpcConnMap.Load(ck)
+func (s *MqMessageService) loadGrpcConn(_ context.Context, agentIP string) (cc *cgrpc.ClientConn, err error) {
+	v, ok := s.grpcConnMap.Load(agentIP)
 	if ok {
-		return v.(*ggrpc.ClientConn), nil
+		cp := v.(*cgrpc.ConnPool)
+		return cp.Get()
 	}
 
-	cc, err = grpc.DialInsecure(ctx,
-		grpc.WithDiscovery(app.GetApplication().Register),
-		grpc.WithEndpoint(ep),
-		grpc.WithFilter(getFilter(agentIP)),
-		grpc.WithTimeout(time.Second*5),
-	)
-
+	cp, err := cgrpc.NewConnPool(cgrpc.WithInsecure(),
+		cgrpc.WithClientOption(
+			grpc.WithEndpoint(fmt.Sprintf("discovery://dc1/%s", app.GetApplication().Config.SrvConfig.PushService)),
+			grpc.WithDiscovery(app.GetApplication().Register),
+			grpc.WithFilter(getFilter(agentIP)),
+			grpc.WithTimeout(time.Second*5),
+			grpc.WithOptions(ggrpc.WithBlock()),
+		), cgrpc.WithPoolSize(2))
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	s.grpcConnMap.Store(ck, cc)
-	return
+	s.grpcConnMap.Store(agentIP, cp)
+	graceful.Register(func(_ context.Context) error {
+		return cp.Release()
+	})
+
+	return cp.Get()
 }
 
 func getFilter(agentIP string) selector.Filter {
