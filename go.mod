@@ -1,10 +1,10 @@
 module github.com/go-goim/msg-worker
 
-go 1.17
+go 1.18
 
 require (
 	github.com/apache/rocketmq-client-go/v2 v2.1.0
-	github.com/gin-gonic/gin v1.7.7
+	github.com/gin-gonic/gin v1.8.1
 	github.com/go-goim/api v0.0.2
 	github.com/go-goim/core v0.0.3
 	github.com/go-kratos/kratos/v2 v2.3.0
@@ -59,7 +59,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
