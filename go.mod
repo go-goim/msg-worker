@@ -5,16 +5,11 @@ go 1.18
 require (
 	github.com/apache/rocketmq-client-go/v2 v2.1.0
 	github.com/gin-gonic/gin v1.8.1
-	github.com/go-goim/api v0.0.4
-	github.com/go-goim/core v0.0.3
+	github.com/go-goim/api v0.0.5
+	github.com/go-goim/core v0.0.5
 	github.com/go-kratos/kratos/v2 v2.3.1
 	github.com/go-redis/redis/v8 v8.11.5
 	google.golang.org/grpc v1.47.0
-)
-
-replace (
-	github.com/go-goim/api => ../api
-	github.com/go-goim/core => ../core
 )
 
 require (
