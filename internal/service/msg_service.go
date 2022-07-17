@@ -17,7 +17,6 @@ import (
 
 	messagev1 "github.com/go-goim/api/message/v1"
 	grouppb "github.com/go-goim/api/user/group/v1"
-	sessionv1 "github.com/go-goim/api/user/session/v1"
 	cgrpc "github.com/go-goim/core/pkg/conn/grpc"
 	"github.com/go-goim/core/pkg/consts"
 	"github.com/go-goim/core/pkg/graceful"
@@ -74,13 +73,13 @@ func (s *MqMessageService) handleSingleMsg(ctx context.Context, ext *primitive.M
 	}
 
 	switch msg.GetSessionType() {
-	case sessionv1.SessionType_SingleChat:
+	case messagev1.SessionType_SingleChat:
 		// push to single user
 		return s.msgToUser(ctx, msg, ext)
-	case sessionv1.SessionType_GroupChat:
+	case messagev1.SessionType_GroupChat:
 		// push to group
 		return s.toGroup(ctx, msg, ext)
-	case sessionv1.SessionType_Broadcast:
+	case messagev1.SessionType_Broadcast:
 		// push to all
 		return s.broadcast(ctx, msg, ext)
 	default:
@@ -94,7 +93,7 @@ func (s *MqMessageService) msgToUser(ctx context.Context, msg *messagev1.Message
 		if err == redisv8.Nil {
 			log.Info("user offline, put to offline queue", "user_id", msg.GetTo())
 			// only when user is offline, put to offline queue
-			return s.putToRedis(ctx, msg.GetTo(), msg.GetMsgId(), ext.Body)
+			return s.putToRedis(ctx, msg.To, msg.GetMsgId(), ext.Body)
 		}
 		return err
 	}
@@ -110,7 +109,7 @@ func (s *MqMessageService) msgToUser(ctx context.Context, msg *messagev1.Message
 
 	out, err := messagev1.NewPushMessageServiceClient(cc).PushMessage(ctx, &messagev1.PushMessageReq{
 		Message: msg,
-		ToUsers: []string{msg.GetTo()},
+		ToUsers: []int64{msg.To},
 	})
 	if err != nil {
 		log.Info("MSG send msg err=", err.Error())
@@ -118,14 +117,14 @@ func (s *MqMessageService) msgToUser(ctx context.Context, msg *messagev1.Message
 	}
 
 	if !out.Response.Success() {
-		_ = s.putToRedis(ctx, msg.GetTo(), msg.GetMsgId(), ext.Body)
+		_ = s.putToRedis(ctx, msg.To, msg.MsgId, ext.Body)
 		return out.Response
 	}
 
 	return nil
 }
 
-func (s *MqMessageService) putToRedis(ctx context.Context, to string, msgID int64, body []byte) error {
+func (s *MqMessageService) putToRedis(ctx context.Context, to int64, msgID int64, body []byte) error {
 	key := consts.GetUserOfflineQueueKey(to)
 
 	// add to queue
@@ -161,7 +160,7 @@ func (s *MqMessageService) broadcast(ctx context.Context, msg *messagev1.Message
 
 			if err = s.broadcastToEndpoint(ctx, strings.TrimPrefix(ep, "grpc://"), &messagev1.PushMessageReq{
 				Message: msg,
-				ToUsers: []string{"ALL"},
+				ToUsers: []int64{-1},
 			}); err != nil {
 				log.Info("broadcastToEndpoint err=", err)
 			}
@@ -208,12 +207,12 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return resp.Response
 	}
 
-	var members []string
+	var members []int64
 	for _, member := range resp.GetGroup().GetMembers() {
 		if member.GetUid() == msg.GetFrom() {
 			continue
 		}
-		members = append(members, member.GetUid())
+		members = append(members, member.Uid)
 	}
 
 	if len(members) == 0 {
@@ -225,7 +224,7 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return err
 	}
 
-	pushFunc := func(agentIP string, users []string) error {
+	pushFunc := func(agentIP string, users []int64) error {
 		cc, err := s.loadGrpcConn(ctx, agentIP)
 		if err != nil {
 			return err
@@ -270,11 +269,11 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 	return nil
 }
 
-func (s *MqMessageService) filterOnlineUsers(ctx context.Context, users []string) (
-	onlineUserMap map[string][]string, offlineUsers []string, err error) {
+func (s *MqMessageService) filterOnlineUsers(ctx context.Context, users []int64) (
+	onlineUserMap map[string][]int64, offlineUsers []int64, err error) {
 
 	// key is agent ip, value is user id
-	onlineUserMap = make(map[string][]string)
+	onlineUserMap = make(map[string][]int64)
 
 	for _, uid := range users {
 		agentIP, err := s.rdb.Get(ctx, consts.GetUserOnlineAgentKey(uid)).Result()
