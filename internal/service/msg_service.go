@@ -207,7 +207,7 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return resp.Response
 	}
 
-	var members []int64
+	var members = make([]int64, 0)
 	for _, member := range resp.GetGroup().GetMembers() {
 		if member.GetUid() == msg.GetFrom() {
 			continue
