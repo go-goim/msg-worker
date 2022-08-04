@@ -19,6 +19,7 @@ import (
 	grouppb "github.com/go-goim/api/user/group/v1"
 	cgrpc "github.com/go-goim/core/pkg/conn/grpc"
 	"github.com/go-goim/core/pkg/consts"
+	"github.com/go-goim/core/pkg/db"
 	"github.com/go-goim/core/pkg/graceful"
 	"github.com/go-goim/core/pkg/log"
 	"github.com/go-goim/core/pkg/waitgroup"
@@ -128,19 +129,22 @@ func (s *MqMessageService) putToRedis(ctx context.Context, to int64, msgID int64
 	key := consts.GetUserOfflineQueueKey(to)
 
 	// add to queue
-	pp := s.rdb.Pipeline()
-	_ = pp.Process(ctx, s.rdb.ZAdd(ctx, key, &redisv8.Z{
-		Score:  float64(msgID),
-		Member: string(body),
-	}))
-	// set key expire
-	_ = pp.Process(ctx, s.rdb.Expire(ctx, key, consts.UserOfflineQueueKeyExpire))
-	// trim old messages
-	_ = pp.Process(ctx, s.rdb.ZRemRangeByRank(ctx, key, 0, -int64(consts.UserOfflineQueueMemberMax+1)))
+	err := db.TxPipeline(db.CtxWithRedis(ctx, s.rdb), func(pp redisv8.Pipeliner) error {
+		pp.ZAdd(ctx, key, &redisv8.Z{
+			Score:  float64(msgID),
+			Member: string(body),
+		})
+		// trim old messages
+		pp.ZRemRangeByRank(ctx, key, 0, -int64(consts.UserOfflineQueueMemberMax+1))
+		// set key expire
+		pp.Expire(ctx, key, consts.UserOfflineQueueKeyExpire)
 
-	_, err := pp.Exec(ctx)
+		return nil
+	})
+
 	if err != nil {
-		log.Info("Exec pipeline err", "err", err.Error())
+		log.Error("Exec pipeline err", "err", err.Error())
+		return err
 	}
 
 	return nil
