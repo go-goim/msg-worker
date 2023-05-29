@@ -108,7 +108,7 @@ func (s *MqMessageService) msgToUser(ctx context.Context, msg *messagev1.Message
 		return err
 	}
 
-	out, err := messagev1.NewPushMessageServiceClient(cc).PushMessage(ctx, &messagev1.PushMessageReq{
+	rsp, err := messagev1.NewPushMessageServiceClient(cc).PushMessage(ctx, &messagev1.PushMessageReq{
 		Message: msg,
 		ToUsers: []int64{msg.To},
 	})
@@ -116,10 +116,9 @@ func (s *MqMessageService) msgToUser(ctx context.Context, msg *messagev1.Message
 		log.Info("MSG send msg err=", err.Error())
 		return err
 	}
-
-	if !out.Response.Success() {
+	if err := rsp.GetError().Err(); err != nil {
 		_ = s.putToRedis(ctx, msg.To, msg.MsgId, ext.Body)
-		return out.Response
+		return err
 	}
 
 	return nil
@@ -185,8 +184,8 @@ func (s *MqMessageService) broadcastToEndpoint(ctx context.Context, ep string, r
 		return err
 	}
 
-	if !rsp.Response.Success() {
-		return rsp.Response
+	if err := rsp.GetError().Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -199,7 +198,7 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return err
 	}
 
-	resp, err := grouppb.NewGroupServiceClient(cc).GetGroup(ctx, &grouppb.GetGroupRequest{
+	rsp, err := grouppb.NewGroupServiceClient(cc).GetGroup(ctx, &grouppb.GetGroupRequest{
 		Gid:         msg.GetTo(),
 		WithMembers: true,
 	})
@@ -207,12 +206,12 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return err
 	}
 
-	if !resp.Response.Success() {
-		return resp.Response
+	if err = rsp.GetError().Err(); err != nil {
+		return err
 	}
 
 	var members = make([]int64, 0)
-	for _, member := range resp.GetGroup().GetMembers() {
+	for _, member := range rsp.GetGroup().GetMembers() {
 		if member.GetUid() == msg.GetFrom() {
 			continue
 		}
@@ -234,7 +233,7 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 			return err
 		}
 
-		out, err := messagev1.NewPushMessageServiceClient(cc).PushMessage(ctx, &messagev1.PushMessageReq{
+		rsp, err := messagev1.NewPushMessageServiceClient(cc).PushMessage(ctx, &messagev1.PushMessageReq{
 			Message: msg,
 			ToUsers: users,
 		})
@@ -243,14 +242,14 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 			return err
 		}
 
-		if !out.Response.Success() {
+		if err := rsp.GetError().Err(); err != nil {
 			// put all to offline queue
 			offlineUsers = append(offlineUsers, users...)
-			return out.Response
+			return err
 		}
 
 		// put failed users to offline queue
-		offlineUsers = append(offlineUsers, out.GetFailedUsers()...)
+		offlineUsers = append(offlineUsers, rsp.GetFailedUsers()...)
 		return nil
 	}
 
@@ -308,7 +307,7 @@ func (s *MqMessageService) loadGrpcConn(_ context.Context, agentIP string) (cc *
 		cgrpc.WithClientOption(
 			grpc.WithEndpoint(fmt.Sprintf("discovery://dc1/%s", app.GetApplication().Config.SrvConfig.PushService)),
 			grpc.WithDiscovery(app.GetApplication().Register),
-			grpc.WithFilter(getFilter(agentIP)),
+			grpc.WithNodeFilter(getFilter(agentIP)),
 			grpc.WithTimeout(time.Second*5),
 			grpc.WithOptions(ggrpc.WithBlock()),
 		), cgrpc.WithPoolSize(2))
@@ -324,7 +323,7 @@ func (s *MqMessageService) loadGrpcConn(_ context.Context, agentIP string) (cc *
 	return cp.Get()
 }
 
-func getFilter(agentIP string) selector.Filter {
+func getFilter(agentIP string) selector.NodeFilter {
 	return func(c context.Context, nodes []selector.Node) []selector.Node {
 		var filtered = make([]selector.Node, 0)
 		for i, n := range nodes {
