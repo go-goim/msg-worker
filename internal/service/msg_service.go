@@ -206,7 +206,7 @@ func (s *MqMessageService) toGroup(ctx context.Context, msg *messagev1.Message, 
 		return err
 	}
 
-	if err := rsp.GetError().Err(); err != nil {
+	if err = rsp.GetError().Err(); err != nil {
 		return err
 	}
 
